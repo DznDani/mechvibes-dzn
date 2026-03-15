@@ -183,7 +183,24 @@ pub fn app() -> Element {
                 }
             }
         });
-    } // Initialize update service for background update checking
+    }
+
+    // Poll for OS default audio device changes every 3 seconds and reinitialize
+    // the audio stream if the user has not pinned a specific output device.
+    {
+        let ctx = audio_context.clone();
+        use_future(move || {
+            let ctx = ctx.clone();
+            async move {
+                loop {
+                    futures_timer::Delay::new(std::time::Duration::from_secs(3)).await;
+                    ctx.check_and_reinitialize_if_default_changed();
+                }
+            }
+        });
+    }
+
+    // Initialize update service for background update checking
     #[cfg(feature = "auto-update")]
     {
         use crate::utils::auto_updater::UpdateService;

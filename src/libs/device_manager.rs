@@ -198,6 +198,11 @@ impl DeviceManager {
             None => Ok(false),
         }
     }
+
+    /// Get the name of the current default output device
+    pub fn get_default_output_device_name(&self) -> Option<String> {
+        self.host.default_output_device()?.name().ok()
+    }
 }
 
 impl Default for DeviceManager {

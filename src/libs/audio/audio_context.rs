@@ -10,8 +10,10 @@ static MOUSE_AUDIO_VOLUME: std::sync::OnceLock<Mutex<f32>> = std::sync::OnceLock
 
 #[derive(Clone)]
 pub struct AudioContext {
-    _stream: Arc<OutputStream>,
-    pub(crate) stream_handle: OutputStreamHandle,
+    // Wrapped in Arc<Mutex<...>> so the stream can be hot-swapped when the OS
+    // default audio output device changes without recreating the whole context.
+    _stream: Arc<Mutex<OutputStream>>,
+    pub(crate) stream_handle: Arc<Mutex<OutputStreamHandle>>,
     pub(crate) keyboard_samples: Arc<Mutex<Option<(Vec<f32>, u16, u32)>>>,
     pub(crate) mouse_samples: Arc<Mutex<Option<(Vec<f32>, u16, u32)>>>,
     pub(crate) key_map: Arc<Mutex<HashMap<String, Vec<[f32; 2]>>>>,
@@ -25,6 +27,8 @@ pub struct AudioContext {
     // Timing tracking for rapid event detection
     pub(crate) last_keyboard_sound_time: Arc<Mutex<Option<Instant>>>,
     pub(crate) last_mouse_sound_time: Arc<Mutex<Option<Instant>>>,
+    // Tracks the OS default device name so we can detect when it changes
+    pub(crate) last_default_device: Arc<Mutex<Option<String>>>,
 }
 
 // Manual PartialEq implementation for component compatibility
@@ -82,9 +86,15 @@ impl AudioContext {
             }
         };
 
+        // Remember which device we actually opened so we can detect OS changes later
+        let initial_default_name = match &config.selected_audio_device {
+            None => device_manager.get_default_output_device_name(),
+            Some(_) => None, // Tracking not needed when a specific device is pinned
+        };
+
         let context = Self {
-            _stream: Arc::new(stream),
-            stream_handle,
+            _stream: Arc::new(Mutex::new(stream)),
+            stream_handle: Arc::new(Mutex::new(stream_handle)),
             keyboard_samples: Arc::new(Mutex::new(None)),
             mouse_samples: Arc::new(Mutex::new(None)),
             key_map: Arc::new(Mutex::new(HashMap::new())),
@@ -97,6 +107,7 @@ impl AudioContext {
             device_manager,
             last_keyboard_sound_time: Arc::new(Mutex::new(None)),
             last_mouse_sound_time: Arc::new(Mutex::new(None)),
+            last_default_device: Arc::new(Mutex::new(initial_default_name)),
         };
         // Initialize volume from config
         let config = AppConfig::load();
@@ -197,8 +208,8 @@ impl AudioContext {
         };
 
         let context = Self {
-            _stream: Arc::new(stream),
-            stream_handle,
+            _stream: Arc::new(Mutex::new(stream)),
+            stream_handle: Arc::new(Mutex::new(stream_handle)),
             keyboard_samples: Arc::new(Mutex::new(None)),
             mouse_samples: Arc::new(Mutex::new(None)),
             key_map: Arc::new(Mutex::new(HashMap::new())),
@@ -211,6 +222,7 @@ impl AudioContext {
             device_manager,
             last_keyboard_sound_time: Arc::new(Mutex::new(None)),
             last_mouse_sound_time: Arc::new(Mutex::new(None)),
+            last_default_device: Arc::new(Mutex::new(None)),
         };
 
         // Initialize volume from config
@@ -237,6 +249,73 @@ impl AudioContext {
                 self.device_manager.test_output_device(device_id).unwrap_or(false)
             }
             None => true, // Default device is always considered available
+        }
+    }
+
+    /// Recreate the OutputStream / OutputStreamHandle in-place, pointing at
+    /// whichever device the current config selects (or the OS default when none
+    /// is configured).  Stale sinks and pressed-key state are cleared so the
+    /// next key/mouse event will open fresh sinks on the new stream.
+    pub fn reinitialize_stream(&self) {
+        let config = AppConfig::load();
+        let device_manager = DeviceManager::new();
+
+        let result: Option<(OutputStream, OutputStreamHandle)> = match &config.selected_audio_device {
+            Some(device_id) => {
+                match device_manager.get_output_device_by_id(device_id) {
+                    Ok(Some(device)) => rodio::OutputStream::try_from_device(&device).ok(),
+                    _ => rodio::OutputStream::try_default().ok(),
+                }
+            }
+            None => rodio::OutputStream::try_default().ok(),
+        };
+
+        if let Some((new_stream, new_handle)) = result {
+            // Update tracked default device name (only meaningful when using OS default)
+            let new_default_name = if config.selected_audio_device.is_none() {
+                device_manager.get_default_output_device_name()
+            } else {
+                None
+            };
+
+            // Swap stream + handle atomically
+            *self._stream.lock().unwrap() = new_stream;
+            *self.stream_handle.lock().unwrap() = new_handle;
+
+            // Discard stale sinks — they are tied to the old stream
+            self.key_sinks.lock().unwrap().clear();
+            self.mouse_sinks.lock().unwrap().clear();
+            self.key_pressed.lock().unwrap().clear();
+            self.mouse_pressed.lock().unwrap().clear();
+
+            *self.last_default_device.lock().unwrap() = new_default_name;
+            println!("🔄 Audio stream reinitialized for new default output device");
+        } else {
+            eprintln!("❌ Failed to reinitialize audio stream");
+        }
+    }
+
+    /// Poll whether the OS default output device has changed since the stream
+    /// was last (re)initialized and, if so, reinitialize automatically.
+    /// This is a no-op when the user has explicitly pinned a specific device.
+    pub fn check_and_reinitialize_if_default_changed(&self) {
+        let config = AppConfig::load();
+        if config.selected_audio_device.is_some() {
+            // User explicitly selected a device — don't override their choice.
+            return;
+        }
+
+        let device_manager = DeviceManager::new();
+        let current_default = device_manager.get_default_output_device_name();
+        let last_known = self.last_default_device.lock().unwrap().clone();
+
+        if current_default != last_known {
+            println!(
+                "🔄 Default audio device changed ({:?} → {:?}), reinitializing stream…",
+                last_known,
+                current_default
+            );
+            self.reinitialize_stream();
         }
     }
 }

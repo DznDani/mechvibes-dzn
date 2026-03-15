@@ -179,7 +179,11 @@ impl AudioContext {
                     let segment_samples = samples[start_sample..clamped_end_sample].to_vec();
                     let segment = SamplesBuffer::new(channels, sample_rate, segment_samples);
 
-                    if let Ok(sink) = Sink::try_new(&self.stream_handle) {
+                    let sink_result = {
+                        let handle = self.stream_handle.lock().unwrap();
+                        Sink::try_new(&*handle)
+                    };
+                    if let Ok(sink) = sink_result {
                         sink.set_volume(self.get_volume());
                         sink.append(segment);
 
@@ -217,7 +221,11 @@ impl AudioContext {
             let segment_samples = samples[start_sample..end_sample].to_vec();
             let segment = SamplesBuffer::new(channels, sample_rate, segment_samples);
 
-            if let Ok(sink) = Sink::try_new(&self.stream_handle) {
+            let sink_result = {
+                let handle = self.stream_handle.lock().unwrap();
+                Sink::try_new(&*handle)
+            };
+            if let Ok(sink) = sink_result {
                 sink.set_volume(self.get_volume());
                 sink.append(segment);
 
@@ -408,7 +416,11 @@ impl AudioContext {
             let segment_samples = samples[start_sample..end_sample].to_vec();
             let segment = SamplesBuffer::new(channels, sample_rate, segment_samples);
 
-            if let Ok(sink) = Sink::try_new(&self.stream_handle) {
+            let sink_result = {
+                let handle = self.stream_handle.lock().unwrap();
+                Sink::try_new(&*handle)
+            };
+            if let Ok(sink) = sink_result {
                 sink.set_volume(self.get_mouse_volume());
                 sink.append(segment);
 
