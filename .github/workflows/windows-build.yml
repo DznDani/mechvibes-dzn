@@ -38,6 +38,9 @@ jobs:
       - name: Install Dioxus CLI
         run: cargo install dioxus-cli --locked
 
+      - name: Build Windows executable
+        run: cargo build --release
+
       - name: Build Windows bundle
         run: dx bundle --release
 
