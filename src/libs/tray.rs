@@ -174,16 +174,10 @@ pub fn handle_tray_events() -> Option<TrayMessage> {
     // Handle tray icon events (clicks on the icon itself)
     if let Ok(event) = TrayIconEvent::receiver().try_recv() {
         match event {
-            TrayIconEvent::DoubleClick { button, .. } => {
-                if button == tray_icon::MouseButton::Left {
-                    println!("🖱️ Tray icon double-clicked - showing window");
-                    return Some(TrayMessage::Show);
-                }
-            }
             TrayIconEvent::Click { button, .. } => {
-                // Single click could toggle visibility
+                // Left click shows the window
                 if button == tray_icon::MouseButton::Left {
-                    println!("🖱️ Tray icon single-clicked - showing window");
+                    println!("🖱️ Tray icon clicked - showing window");
                     return Some(TrayMessage::Show);
                 }
             }
