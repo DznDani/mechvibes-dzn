@@ -14,7 +14,11 @@ use libs::window_manager::{ WindowAction, WINDOW_MANAGER };
 use libs::input_listener::start_unified_input_listener;
 use libs::focused_input_listener::start_focused_keyboard_listener;
 use libs::input_manager::{ init_input_channels, init_window_focus_state_with_value, get_window_focus_state };
+use std::io::{ Read, Write };
+use std::net::{ TcpListener, TcpStream };
 use std::sync::mpsc;
+use std::thread;
+use std::time::Duration;
 
 #[cfg(target_os = "linux")]
 use libs::evdev_input_listener::start_evdev_keyboard_listener;
@@ -24,6 +28,8 @@ use std::sync::{Arc, Mutex};
 
 // Use .ico format for better Windows compatibility
 const EMBEDDED_ICON: &[u8] = include_bytes!("../assets/icon.ico");
+const SINGLE_INSTANCE_PORTS: [u16; 5] = [43821, 43822, 43823, 43824, 43825];
+const SINGLE_INSTANCE_ACK: &str = "MECHVIBES_DX_ACK";
 
 fn load_icon() -> Option<dioxus::desktop::tao::window::Icon> {
     // Try to create icon from embedded ICO data
@@ -64,6 +70,105 @@ fn load_icon() -> Option<dioxus::desktop::tao::window::Icon> {
     }
 }
 
+fn start_instance_message_server(listener: TcpListener) {
+    thread::spawn(move || {
+        if let Err(e) = listener.set_nonblocking(true) {
+            always_eprint!("❌ Failed to configure instance socket listener: {}", e);
+            return;
+        }
+
+        loop {
+            match listener.accept() {
+                Ok((mut stream, _addr)) => {
+                    let mut buffer = [0u8; 1024];
+                    match stream.read(&mut buffer) {
+                        Ok(size) if size > 0 => {
+                            let message = String::from_utf8_lossy(&buffer[..size]);
+                            debug_print!("📨 Received secondary instance signal: {}", message);
+
+                            if let Err(e) = stream.write_all(SINGLE_INSTANCE_ACK.as_bytes()) {
+                                debug_eprint!("⚠️ Failed to send ACK to secondary instance: {}", e);
+                            }
+                        }
+                        Ok(_) => {
+                            debug_print!("📨 Received empty secondary instance signal");
+                        }
+                        Err(e) => {
+                            debug_eprint!("⚠️ Failed to read secondary instance signal: {}", e);
+                        }
+                    }
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    thread::sleep(Duration::from_millis(150));
+                }
+                Err(e) => {
+                    debug_eprint!("⚠️ Instance socket accept error: {}", e);
+                    thread::sleep(Duration::from_millis(500));
+                }
+            }
+        }
+    });
+}
+
+fn notify_primary_instance(addr: &str, args: &[String]) -> bool {
+    match TcpStream::connect(addr) {
+        Ok(mut stream) => {
+            let payload = format!("launch:{}", args.join("\t"));
+            if let Err(e) = stream.write_all(payload.as_bytes()) {
+                debug_eprint!("⚠️ Failed to notify primary instance: {}", e);
+                return false;
+            }
+
+            if let Err(e) = stream.set_read_timeout(Some(Duration::from_millis(300))) {
+                debug_eprint!("⚠️ Failed to set read timeout for primary instance socket: {}", e);
+                return false;
+            }
+
+            let mut ack = [0u8; 64];
+            match stream.read(&mut ack) {
+                Ok(size) if size > 0 => String::from_utf8_lossy(&ack[..size]).contains(SINGLE_INSTANCE_ACK),
+                Ok(_) => false,
+                Err(e) => {
+                    debug_eprint!("⚠️ Failed to read ACK from primary instance: {}", e);
+                    false
+                }
+            }
+        }
+        Err(e) => {
+            debug_eprint!("⚠️ Could not connect to primary instance socket: {}", e);
+            false
+        }
+    }
+}
+
+fn enforce_single_instance(args: &[String]) {
+    for port in SINGLE_INSTANCE_PORTS {
+        let addr = format!("127.0.0.1:{}", port);
+        if notify_primary_instance(&addr, args) {
+            always_eprint!("❌ Another instance of {} is already running", APP_NAME);
+            debug_print!("⛔ Secondary instance exited after notifying primary on {}", addr);
+            std::process::exit(0);
+        }
+    }
+
+    for port in SINGLE_INSTANCE_PORTS {
+        let addr = format!("127.0.0.1:{}", port);
+        match TcpListener::bind(&addr) {
+            Ok(listener) => {
+                start_instance_message_server(listener);
+                debug_print!("✅ Single instance socket guard active on {}", addr);
+                return;
+            }
+            Err(e) => {
+                debug_eprint!("⚠️ Could not bind single instance socket on {}: {}", addr, e);
+            }
+        }
+    }
+
+    always_eprint!("❌ Failed to initialize single-instance socket guard on all ports");
+    std::process::exit(1);
+}
+
 fn main() {
     // Initialize debug logging first
     utils::logger::init_debug_logging();
@@ -84,23 +189,8 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     debug_print!("🔍 Command line args: {:?}", args);
 
-    // Enforce single instance - prevent multiple app instances
-    let app_id = "mechvibes-dx-instance";
-    match single_instance::SingleInstance::new(app_id) {
-        Ok(instance) => {
-            // App is first instance - safe to proceed
-            // Keep instance alive for entire app lifetime by forgetting it
-            // (it will be cleaned up when the process exits)
-            std::mem::forget(instance);
-            debug_print!("✅ Single instance guard activated - this is the primary instance");
-        }
-        Err(_) => {
-            // Another instance is already running
-            always_eprint!("❌ Another instance of {} is already running", APP_NAME);
-            debug_print!("⛔ Exiting - only one instance allowed");
-            std::process::exit(1);
-        }
-    }
+    // Enforce single instance using local socket-based communication.
+    enforce_single_instance(&args);
 
     // Check if we should start minimized (from auto-startup)
     let should_start_minimized =
