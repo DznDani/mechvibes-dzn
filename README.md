@@ -15,8 +15,10 @@ MechvibesDZN lets you play any sound when you type or click. Use it for educatio
 I just needed some fixes that annoyed me and i will add some features i find useful for my use case, if u want to use it, don't expect god level programming.
 
 ### Fixes and features added
+
 - Implemented Github Actions workflow (only for windows builds)
 - Fixed default output device refresh
+- Fixed opening multiple instances of the app
 - Added single and double click from tray to open the app
 
 ## Features
