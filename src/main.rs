@@ -84,6 +84,24 @@ fn main() {
     let args: Vec<String> = std::env::args().collect();
     debug_print!("🔍 Command line args: {:?}", args);
 
+    // Enforce single instance - prevent multiple app instances
+    let app_id = "mechvibes-dx-instance";
+    match single_instance::SingleInstance::new(app_id) {
+        Ok(instance) => {
+            // App is first instance - safe to proceed
+            // Keep instance alive for entire app lifetime by forgetting it
+            // (it will be cleaned up when the process exits)
+            std::mem::forget(instance);
+            debug_print!("✅ Single instance guard activated - this is the primary instance");
+        }
+        Err(_) => {
+            // Another instance is already running
+            always_eprint!("❌ Another instance of {} is already running", APP_NAME);
+            debug_print!("⛔ Exiting - only one instance allowed");
+            std::process::exit(1);
+        }
+    }
+
     // Check if we should start minimized (from auto-startup)
     let should_start_minimized =
         args.contains(&"--minimized".to_string()) ||
