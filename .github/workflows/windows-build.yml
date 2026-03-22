@@ -5,8 +5,44 @@ on:
     branches: [main]
     tags:
       - "v*"
+    paths:
+      - "src/**"
+      - "libs/**"
+      - "state/**"
+      - "utils/**"
+      - "assets/**"
+      - "soundpacks/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "build.rs"
+      - "Dioxus.toml"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "postcss.config.js"
+      - "tailwind.config.js"
+      - "style.css"
+      - ".github/workflows/windows-build.yml"
   pull_request:
     branches: [main]
+    paths:
+      - "src/**"
+      - "libs/**"
+      - "state/**"
+      - "utils/**"
+      - "assets/**"
+      - "soundpacks/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "build.rs"
+      - "Dioxus.toml"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "postcss.config.js"
+      - "tailwind.config.js"
+      - "style.css"
+      - ".github/workflows/windows-build.yml"
   workflow_dispatch:
 
 jobs:
