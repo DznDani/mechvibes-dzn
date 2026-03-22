@@ -1,10 +1,23 @@
-![image](https://github.com/user-attachments/assets/5aa36739-76c8-4a34-9a9b-7e9272927f22)
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/5aa36739-76c8-4a34-9a9b-7e9272927f22" alt="MechvibesDZN Logo"/>
+</p>
 
-# MechvibesDX (Personal fork)
+# MechvibesDZN
+
+[![Windows Build](https://github.com/DznDani/mechvibes-dzn/actions/workflows/windows-build.yml/badge.svg)](https://github.com/DznDani/mechvibes-dzn/actions/workflows/windows-build.yml)
 
 **A fun and practical way to bring your favorite sounds anywhere!**
 
-MechvibesDX lets you play any sound when you type or click. Use it for education, presentations, gaming, or just for fun.
+MechvibesDZN lets you play any sound when you type or click. Use it for education, presentations, gaming, or just for fun.
+
+## ⚠️ This is a personal fork ⚠️
+
+I just needed some fixes that annoyed me and i will add some features i find useful for my use case, if u want to use it, don't expect god level programming.
+
+### Fixes and features added
+- Implemented Github Actions workflow (only for windows builds)
+- Fixed default output device refresh
+- Added single and double click from tray to open the app
 
 ## Features
 
@@ -18,10 +31,10 @@ MechvibesDX lets you play any sound when you type or click. Use it for education
 
 ## Installation
 
-1. Download from [Releases](https://github.com/hainguyents13/mechvibes-dx/releases)
+1. Download from [Releases](https://github.com/dzndani/mechvibes-dzn/releases)
 2. Run installer
 3. Select soundpacks
-4. Enjoy the sounds or playing with Customizations
+4. Enjoy the sounds or playing with customizations
 
 ## Use cases
 
